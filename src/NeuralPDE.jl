@@ -34,6 +34,7 @@ using Statistics: Statistics, mean
 using QuasiMonteCarlo: QuasiMonteCarlo, LatinHypercubeSample
 using WeightInitializers: glorot_uniform, zeros32
 using Zygote: Zygote
+using FastGaussQuadrature: gausslegendre
 
 # Symbolic Stuff
 using ModelingToolkit: ModelingToolkit, PDESystem, Differential, toexpr
@@ -49,7 +50,7 @@ using AdvancedHMC: AdvancedHMC, DiagEuclideanMetric, HMC, HMCDA, Hamiltonian,
 using Distributions: Distributions, Distribution, MvNormal, Normal, dim, logpdf
 using LogDensityProblems: LogDensityProblems
 using MCMCChains: MCMCChains, Chains, sample
-using MonteCarloMeasurements: Particles, pmean
+using MonteCarloMeasurements: Particles
 
 import LuxCore: initialparameters, initialstates, parameterlength
 
@@ -90,12 +91,10 @@ include("BPINN_ode.jl")
 include("PDE_BPINN.jl")
 
 include("dgm.jl")
-include("NN_SDE_solve.jl")
 
 export PINOODE
 export NNODE, NNDAE
 export BNNODE, ahmc_bayesian_pinn_ode, ahmc_bayesian_pinn_pde
-export NNSDE
 export PhysicsInformedNN, discretize
 export BPINNsolution, BayesianPINN
 export DeepGalerkin
@@ -103,7 +102,7 @@ export DeepGalerkin
 export neural_adapter
 
 export GridTraining, StochasticTraining, QuadratureTraining, QuasiRandomTraining,
-       WeightedIntervalTraining
+       WeightedIntervalTraining, QuadInTimeQMCinSpaceTraining
 
 export build_loss_function, get_loss_function,
        generate_training_sets, get_variables, get_argument, get_bounds,

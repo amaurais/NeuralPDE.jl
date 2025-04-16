@@ -262,7 +262,7 @@ function get_bounds(domains, eqs, bcs, eltypeθ, dict_indvars, dict_depvars, str
     dict_span = Dict([Symbol(d.variables) => [
                           infimum(d.domain) + dx, supremum(d.domain) - dx] for d in domains])
 
-    pde_args = get_argument(eqs, dict_indvars, dict_depvars)
+    pde_args = get_argument(eqs, dict_indvars, dict_depvars) #? should I reorder these here? 
     pde_bounds = map(pde_args) do pde_arg
         bds = mapreduce(s -> get(dict_span, s, fill(s, 2)), hcat, pde_arg)
         bds = eltypeθ.(bds)
@@ -270,6 +270,55 @@ function get_bounds(domains, eqs, bcs, eltypeθ, dict_indvars, dict_depvars, str
     end
 
     bound_args = get_argument(bcs, dict_indvars, dict_depvars)
+    bcs_bounds = map(bound_args) do bound_arg
+        bds = mapreduce(s -> get(dict_span, s, fill(s, 2)), hcat, bound_arg)
+        bds = eltypeθ.(bds)
+        return bds[1, :], bds[2, :]
+    end
+
+    return pde_bounds, bcs_bounds
+end
+
+# todo: figure out how to deal with boundary condition var_arr, e.g., [:x, :y, 0]
+# probably: test to see how many elements of var_arr are symbolic  
+# if not 100% symbolic, identify the missing variables and sort accordingly 
+# although this doesn't seem to break on the boundary conditions so maybe this is a parsing issue 
+
+function correctly_sorted(dict_vars, var_arr)
+    symb_flags = [ typeof(x) == Symbol for x in var_arr ]
+    num_symb = sum(symb_flags) 
+
+    if num_symb == length(var_arr) 
+        correct_idx = [dict_vars[key] for key in var_arr]
+        correct_perm = sortperm(correct_idx)
+        sorted_arr = var_arr[correct_perm] 
+    else
+        symb_arr = var_arr[symb_flags]
+        sorted_symb_arr = correctly_sorted(dict_vars, symb_arr)  
+        key_arr = collect(keys(dict_vars))
+        missing_key = setdiff(key_arr, symb_arr)[1] 
+        missing_idx = dict_vars[missing_key]
+        missing_val = var_arr[.!symb_flags][1]
+        sorted_arr = [sorted_symb_arr[1:missing_idx-1]; missing_val; sorted_symb_arr[missing_idx+1:end]]
+    end
+    return sorted_arr
+end
+
+function get_bounds(domains, eqs, bcs, eltypeθ, dict_indvars, dict_depvars, strategy::QuadInTimeQMCinSpaceTraining)
+    dx = 1 / (strategy.nX * strategy.nT)
+    dict_span = Dict([Symbol(d.variables) => [
+                          infimum(d.domain) + dx, supremum(d.domain) - dx] for d in domains]) 
+    #* added a line to re-order these properly. A similar problem is probably arising with QuasiRandomTraining 
+    pde_args_ = get_argument(eqs, dict_indvars, dict_depvars) #? redo the ordering here? 
+    pde_args = [ correctly_sorted(dict_indvars, arg) for arg in pde_args_ ]
+    pde_bounds = map(pde_args) do pde_arg
+        bds = mapreduce(s -> get(dict_span, s, fill(s, 2)), hcat, pde_arg)
+        bds = eltypeθ.(bds)
+        return bds[1, :], bds[2, :]
+    end
+
+    bound_args_ = get_argument(bcs, dict_indvars, dict_depvars)
+    bound_args = [ correctly_sorted(dict_indvars, arg) for arg in bound_args_ ]
     bcs_bounds = map(bound_args) do bound_arg
         bds = mapreduce(s -> get(dict_span, s, fill(s, 2)), hcat, bound_arg)
         bds = eltypeθ.(bds)

@@ -386,3 +386,90 @@ function get_loss_function(init_params, loss_function, train_set, eltype0,
     train_set = train_set |> safe_get_device(init_params) |> EltypeAdaptor{eltype0}()
     return (θ) -> mean(abs2, loss_function(train_set, θ))
 end
+
+struct QuadInTimeQMCinSpaceTraining <: AbstractTrainingStrategy 
+	nT:: Int # do Gauss-Legendre quadrature in time 
+	nX:: Int # use QMC in space. Do this for boundary conditions as well 
+	d:: Int # spatial dimension 
+end
+
+function QuadInTimeQMCinSpaceTraining(nT, nX; d=2) 
+	return QuadInTimeQMCinSpaceTraining(nT, nX, d)
+end
+
+function generate_time_disc(points, bound)
+	lb, ub = bound
+	x, w = gausslegendre(points) 
+	weights = w .* ((ub - lb)/2)
+	nodes =  x .* ((ub - lb)/2) .+ (lb + ub)/2  
+	#return  (eltypeθ.(nodes), eltypeθ.(weights))
+	return (nodes, weights) 
+end
+
+#? what other functions do I need? 
+function merge_strategy_with_loss_function(pinnrep::PINNRepresentation,
+	strategy::QuadInTimeQMCinSpaceTraining, datafree_pde_loss_function,
+	datafree_bc_loss_function)
+
+	(; domains, eqs, bcs, dict_indvars, dict_depvars) = pinnrep
+
+    eltypeθ = eltype(pinnrep.flat_init_params)
+
+    bounds = get_bounds(domains, eqs, bcs, eltypeθ, dict_indvars, dict_depvars, strategy)
+    pde_bounds, bcs_bounds = bounds  
+
+    pde_loss_functions = [get_loss_function(pinnrep, _loss, bound, eltypeθ, strategy)
+                          for (_loss, bound) in zip(datafree_pde_loss_function, pde_bounds)]
+
+	#! AH shoot I have to deal with the boundary conditions 
+    bc_loss_functions = [get_loss_function(pinnrep, _loss, bound, eltypeθ, strategy)
+                         for (_loss, bound) in zip(datafree_bc_loss_function, bcs_bounds)]
+
+    return pde_loss_functions, bc_loss_functions
+
+end
+
+
+function get_loss_function(init_params, loss_function, bound, eltypeθ,
+	strategy::QuadInTimeQMCinSpaceTraining; τ = nothing)
+
+    (; domains, eqs, bcs, dict_indvars, dict_depvars) = init_params 
+    t_idx = dict_indvars[:t]
+
+	init_params = init_params isa PINNRepresentation ? init_params.init_params : init_params 
+    dev = safe_get_device(init_params)
+
+	alg_QMC = LatinHypercubeSample()
+
+    #! here's the issue: time is the first variable in this ordering! curses...
+    #? I guess the ordering is lexicographical? 
+	if bound[1][t_idx] != bound[2][t_idx] # main loss 
+		(time_pts, time_weights) = generate_time_disc(strategy.nT, (bound[1][t_idx], bound[2][t_idx]))
+		rep_time = repeat(time_pts, strategy.nX)
+		rep_weights = sqrt.(repeat(time_weights, strategy.nX))
+
+		θ -> begin
+				space_pts = @ignore_derivatives QuasiMonteCarlo.sample(
+					strategy.nX, bound[1][[1:t_idx-1; t_idx+1:end]], bound[2][[1:t_idx-1; t_idx+1:end]], alg_QMC)
+
+				#? ignore derivatives here too?  
+				rep_space = repeat(space_pts, 1, strategy.nT) 
+                #! insert this in the right place 
+				pts_product = [ rep_space[1:t_idx-1, :]; rep_time'; rep_space[t_idx:end, :] ]
+
+				pts_product = pts_product |> dev |> EltypeAdaptor{eltypeθ}()
+				# need to tensor product the two sets and account for the time weights 
+				return sum( abs2, rep_weights .* loss_function(pts_product, θ) )/strategy.nX  #! this might be suspect 
+			end
+	#TODO I think this is fine... need to test  
+	else # boundary condition loss 
+		θ -> begin
+					space_pts = @ignore_derivatives QuasiMonteCarlo.sample(
+						strategy.nX, bound[1], bound[2], alg_QMC) # just do the usual QMC 
+
+					space_pts = space_pts |> dev |> EltypeAdaptor{eltypeθ}()
+					# need to tensor product the two sets and account for the time weights 
+					return mean(abs2, loss_function(space_pts, θ))  
+				end
+	end
+end

@@ -449,6 +449,11 @@ function get_argument(eqs, dict_indvars, dict_depvars)
                 true
             end
         end
-    end
-    return args_ # TODO for all arguments
+    end    
+    
+    #! have to deal with boundary conditions too, huh! 
+    #return [correctly_sorted(dict_indvars, arg) for arg in args_] 
+    return args_ 
 end
+
+#! well I think I just found a legitimate bug 
