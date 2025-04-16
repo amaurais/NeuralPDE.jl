@@ -450,18 +450,16 @@ function get_loss_function(init_params, loss_function, bound, eltypeθ,
 
 		θ -> begin
 				space_pts = @ignore_derivatives QuasiMonteCarlo.sample(
-					strategy.nX, bound[1][[1:t_idx-1; t_idx+1:end]], bound[2][[1:t_idx-1; t_idx+1:end]], alg_QMC)
+					strategy.nX*strategy.nT, bound[1][[1:t_idx-1; t_idx+1:end]], bound[2][[1:t_idx-1; t_idx+1:end]], alg_QMC)
 
-				#? ignore derivatives here too?  
-				rep_space = repeat(space_pts, 1, strategy.nT) 
-                #! insert this in the right place 
-				pts_product = [ rep_space[1:t_idx-1, :]; rep_time'; rep_space[t_idx:end, :] ]
+				pts_product = [ space_pts[1:t_idx-1, :]; rep_time'; space_pts[t_idx:end, :] ]
 
 				pts_product = pts_product |> dev |> EltypeAdaptor{eltypeθ}()
 				# need to tensor product the two sets and account for the time weights 
-				return sum( abs2, rep_weights .* loss_function(pts_product, θ) )/strategy.nX  #! this might be suspect 
+
+				return sum(abs2, rep_weights .* loss_function(pts_product, θ)[:])/strategy.nX 
+                #return dot(rep_weights, loss_function(pts_product, θ)[:].^2 )/strategy.nX  #! this might be suspect 
 			end
-	#TODO I think this is fine... need to test  
 	else # boundary condition loss 
 		θ -> begin
 					space_pts = @ignore_derivatives QuasiMonteCarlo.sample(

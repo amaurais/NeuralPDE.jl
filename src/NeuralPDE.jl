@@ -13,7 +13,7 @@ using ForwardDiff: ForwardDiff
 using Functors: Functors, fmap
 using Integrals: Integrals, CubatureJLh, QuadGKJL
 using IntervalSets: infimum, supremum
-using LinearAlgebra: Diagonal
+using LinearAlgebra: Diagonal 
 using Lux: Lux, Chain, Dense, SkipConnection, StatefulLuxLayer
 using Lux: FromFluxAdaptor, recursive_eltype
 using NeuralOperators: DeepONet
@@ -112,5 +112,7 @@ export AbstractAdaptiveLoss, NonAdaptiveLoss, GradientScaleAdaptiveLoss,
        MiniMaxAdaptiveLoss
 
 export LogOptions
+
+export generate_time_disc
 
 end # module
