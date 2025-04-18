@@ -13,7 +13,7 @@ using ForwardDiff: ForwardDiff
 using Functors: Functors, fmap
 using Integrals: Integrals, CubatureJLh, QuadGKJL
 using IntervalSets: infimum, supremum
-using LinearAlgebra: Diagonal 
+using LinearAlgebra: Diagonal, dot 
 using Lux: Lux, Chain, Dense, SkipConnection, StatefulLuxLayer
 using Lux: FromFluxAdaptor, recursive_eltype
 using NeuralOperators: DeepONet

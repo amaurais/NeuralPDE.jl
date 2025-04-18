@@ -447,6 +447,7 @@ function get_loss_function(init_params, loss_function, bound, eltypeθ,
 		(time_pts, time_weights) = generate_time_disc(strategy.nT, (bound[1][t_idx], bound[2][t_idx]))
 		rep_time = repeat(time_pts, strategy.nX)
 		rep_weights = sqrt.(repeat(time_weights, strategy.nX))
+        rep_weights = rep_weights |> dev |> EltypeAdaptor{eltypeθ}()
 
 		θ -> begin
 				space_pts = @ignore_derivatives QuasiMonteCarlo.sample(
@@ -458,7 +459,7 @@ function get_loss_function(init_params, loss_function, bound, eltypeθ,
 				# need to tensor product the two sets and account for the time weights 
 
 				return sum(abs2, rep_weights .* loss_function(pts_product, θ)[:])/strategy.nX 
-                #return dot(rep_weights, loss_function(pts_product, θ)[:].^2 )/strategy.nX  #! this might be suspect 
+                #return dot(rep_weights, loss_function(pts_product, θ).^2 )/strategy.nX  #! this might be suspect 
 			end
 	else # boundary condition loss 
 		θ -> begin
