@@ -421,7 +421,6 @@ function merge_strategy_with_loss_function(pinnrep::PINNRepresentation,
     pde_loss_functions = [get_loss_function(pinnrep, _loss, bound, eltypeθ, strategy)
                           for (_loss, bound) in zip(datafree_pde_loss_function, pde_bounds)]
 
-	#! AH shoot I have to deal with the boundary conditions 
     bc_loss_functions = [get_loss_function(pinnrep, _loss, bound, eltypeθ, strategy)
                          for (_loss, bound) in zip(datafree_bc_loss_function, bcs_bounds)]
 
@@ -471,4 +470,118 @@ function get_loss_function(init_params, loss_function, bound, eltypeθ,
 					return mean(abs2, loss_function(space_pts, θ))  
 				end
 	end
+end
+
+@kwdef struct CustomTraining <: AbstractTrainingStrategy 
+	pts_pde::AbstractArray 
+    pts_bc::Vector{AbstractArray}  
+end
+
+function merge_strategy_with_loss_function(pinnrep::PINNRepresentation,
+	strategy::CustomTraining, datafree_pde_loss_function,
+	datafree_bc_loss_function)
+
+	(; domains, eqs, bcs, dict_indvars, dict_depvars) = pinnrep
+
+    eltypeθ = eltype(pinnrep.flat_init_params)
+
+    bounds = get_bounds(domains, eqs, bcs, eltypeθ, dict_indvars, dict_depvars, strategy) 
+    pde_bounds, bcs_bounds = bounds  
+
+    pde_loss_functions = [get_pde_loss_function(pinnrep, _loss, bound, eltypeθ, strategy)
+                          for (_loss, bound) in zip(datafree_pde_loss_function, pde_bounds)]
+
+    bc_loss_functions = [get_bc_loss_function(pinnrep, _loss, bound, eltypeθ, strategy, idx)
+                         for (idx, (_loss, bound)) in enumerate(zip(datafree_bc_loss_function, bcs_bounds))]
+
+    return pde_loss_functions, bc_loss_functions
+
+end
+
+function get_pde_loss_function(init_params, loss_function, bound, eltypeθ,
+	strategy::CustomTraining; τ = nothing)
+
+    (; domains, eqs, bcs, dict_indvars, dict_depvars) = init_params 
+    t_idx = dict_indvars[:t]
+
+	init_params = init_params isa PINNRepresentation ? init_params.init_params : init_params 
+    dev = safe_get_device(init_params)
+    pts_pde = strategy.pts_pde 
+    pts_pde = pts_pde |> dev |> EltypeAdaptor{eltypeθ}() #! this might be redundant 
+ 
+    θ -> mean(abs2, loss_function(pts_pde, θ))  
+end
+
+@kwdef struct SimulationTraining <: AbstractTrainingStrategy 
+	pts_pde::Dict  # has entries t and u 
+    pts_bc::Vector{AbstractArray}  #! doesn't need to change 
+end
+
+function merge_strategy_with_loss_function(pinnrep::PINNRepresentation,
+	strategy::SimulationTraining, datafree_pde_loss_function,
+	datafree_bc_loss_function)
+
+	(; domains, eqs, bcs, dict_indvars, dict_depvars) = pinnrep
+
+    eltypeθ = eltype(pinnrep.flat_init_params)
+
+    bounds = get_bounds(domains, eqs, bcs, eltypeθ, dict_indvars, dict_depvars, strategy)  
+    pde_bounds, bcs_bounds = bounds  
+
+    pde_loss_functions = [get_pde_loss_function(pinnrep, _loss, bound, eltypeθ, strategy)
+                          for (_loss, bound) in zip(datafree_pde_loss_function, pde_bounds)]
+
+    bc_loss_functions = [get_bc_loss_function(pinnrep, _loss, bound, eltypeθ, strategy, idx)
+                         for (idx, (_loss, bound)) in enumerate(zip(datafree_bc_loss_function, bcs_bounds))]
+
+    return pde_loss_functions, bc_loss_functions
+
+end
+
+function trapezoidal_weights(t::Vector) 
+    Δt = t[2:end] - t[1:end-1] 
+    weights = [Δt/2; 0] + [0; Δt/2] 
+end
+
+function get_pde_loss_function(init_params, loss_function, bound, eltypeθ,
+	strategy::SimulationTraining; τ = nothing)
+
+    (; domains, eqs, bcs, dict_indvars, dict_depvars) = init_params 
+    t_idx = dict_indvars[:t]
+
+	init_params = init_params isa PINNRepresentation ? init_params.init_params : init_params 
+    dev = safe_get_device(init_params)
+
+    u_pde = strategy.pts_pde[:u]
+    t_pde = strategy.pts_pde[:t] 
+
+    nX = size(u_pde, 2) # d x nX x nT 
+    
+    # Δt = t_pde[2:end] - t_pde[1:end-1] 
+    # weights = [Δt/2; 0] + [0; Δt/2]  
+    weights = trapezoidal_weights(t_pde) #* For trapezoidal rule 
+    
+    rep_time = repeat(t_pde, inner=nX)
+    rep_weights = repeat(weights, inner=nX)
+
+    catU = cat(eachslice(u_pde, dims=3)..., dims=2)
+    combined_pts = vcat(catU, rep_time')
+
+    combined_pts = combined_pts |> dev |> EltypeAdaptor{eltypeθ}()  
+    rep_weights = rep_weights |> dev |> EltypeAdaptor{eltypeθ}()
+
+    # compute the weights. We have a set of fixed function evaluations at different times. We can use the trapezoidal rule 
+    θ -> sum(abs2, rep_weights .* loss_function(combined_pts, θ)[:])/nX 
+    # TODO test this 
+end
+
+# TODO account for different collocation points for different boundary conditions. Use bound, if necessary   
+function get_bc_loss_function(init_params, loss_function, bound, eltypeθ,
+	strategy::Union{CustomTraining, SimulationTraining}, idx::Integer; τ = nothing)
+
+	init_params = init_params isa PINNRepresentation ? init_params.init_params : init_params 
+    dev = safe_get_device(init_params)
+    pts_bc = strategy.pts_bc[idx] |> dev |> EltypeAdaptor{eltypeθ}() #! this might be redundant 
+ 
+    θ -> mean(abs2, loss_function(pts_bc, θ))  
 end

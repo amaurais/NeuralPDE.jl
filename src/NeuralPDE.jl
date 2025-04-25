@@ -102,7 +102,7 @@ export DeepGalerkin
 export neural_adapter
 
 export GridTraining, StochasticTraining, QuadratureTraining, QuasiRandomTraining,
-       WeightedIntervalTraining, QuadInTimeQMCinSpaceTraining
+       WeightedIntervalTraining, QuadInTimeQMCinSpaceTraining, CustomTraining, SimulationTraining  
 
 export build_loss_function, get_loss_function,
        generate_training_sets, get_variables, get_argument, get_bounds,
@@ -113,6 +113,6 @@ export AbstractAdaptiveLoss, NonAdaptiveLoss, GradientScaleAdaptiveLoss,
 
 export LogOptions
 
-export generate_time_disc
+export generate_time_disc, trapezoidal_weights 
 
 end # module

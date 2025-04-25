@@ -328,6 +328,54 @@ function get_bounds(domains, eqs, bcs, eltypeθ, dict_indvars, dict_depvars, str
     return pde_bounds, bcs_bounds
 end
 
+function get_bounds(domains, eqs, bcs, eltypeθ, dict_indvars, dict_depvars, strategy::CustomTraining)
+    dx = 1 / (size(strategy.pts_pde, 2)) # whatever... 
+    dict_span = Dict([Symbol(d.variables) => [
+                          infimum(d.domain) + dx, supremum(d.domain) - dx] for d in domains]) 
+    #* added a line to re-order these properly. A similar problem is probably arising with QuasiRandomTraining 
+    pde_args_ = get_argument(eqs, dict_indvars, dict_depvars) #? redo the ordering here? 
+    pde_args = [ correctly_sorted(dict_indvars, arg) for arg in pde_args_ ]
+    pde_bounds = map(pde_args) do pde_arg
+        bds = mapreduce(s -> get(dict_span, s, fill(s, 2)), hcat, pde_arg)
+        bds = eltypeθ.(bds)
+        return bds[1, :], bds[2, :]
+    end
+
+    bound_args_ = get_argument(bcs, dict_indvars, dict_depvars)
+    bound_args = [ correctly_sorted(dict_indvars, arg) for arg in bound_args_ ]
+    bcs_bounds = map(bound_args) do bound_arg
+        bds = mapreduce(s -> get(dict_span, s, fill(s, 2)), hcat, bound_arg)
+        bds = eltypeθ.(bds)
+        return bds[1, :], bds[2, :]
+    end
+
+    return pde_bounds, bcs_bounds
+end
+
+function get_bounds(domains, eqs, bcs, eltypeθ, dict_indvars, dict_depvars, strategy::SimulationTraining)
+    dx = 1 / (size(strategy.pts_pde[:u], 2)) # whatever... 
+    dict_span = Dict([Symbol(d.variables) => [
+                          infimum(d.domain) + dx, supremum(d.domain) - dx] for d in domains]) 
+    #* added a line to re-order these properly. A similar problem is probably arising with QuasiRandomTraining 
+    pde_args_ = get_argument(eqs, dict_indvars, dict_depvars) #? redo the ordering here? 
+    pde_args = [ correctly_sorted(dict_indvars, arg) for arg in pde_args_ ]
+    pde_bounds = map(pde_args) do pde_arg
+        bds = mapreduce(s -> get(dict_span, s, fill(s, 2)), hcat, pde_arg)
+        bds = eltypeθ.(bds)
+        return bds[1, :], bds[2, :]
+    end
+
+    bound_args_ = get_argument(bcs, dict_indvars, dict_depvars)
+    bound_args = [ correctly_sorted(dict_indvars, arg) for arg in bound_args_ ]
+    bcs_bounds = map(bound_args) do bound_arg
+        bds = mapreduce(s -> get(dict_span, s, fill(s, 2)), hcat, bound_arg)
+        bds = eltypeθ.(bds)
+        return bds[1, :], bds[2, :]
+    end
+
+    return pde_bounds, bcs_bounds
+end
+
 function get_numeric_integral(pinnrep::PINNRepresentation)
     (; strategy, indvars, depvars, derivative, depvars, indvars, dict_indvars, dict_depvars) = pinnrep
 
