@@ -538,7 +538,7 @@ function merge_strategy_with_loss_function(pinnrep::PINNRepresentation,
 
 end
 
-function trapezoidal_weights(t::Vector) 
+function trapezoidal_weights(t::AbstractArray) 
     Δt = t[2:end] - t[1:end-1] 
     weights = [Δt/2; 0] + [0; Δt/2] 
 end
